@@ -63,6 +63,13 @@ export default function App() {
         body: JSON.stringify({ items }),
       });
 
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response received:", text);
+        throw new Error("The server returned an invalid response. Please check if the backend is running correctly.");
+      }
+
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || 'Failed to analyze inventory.');
@@ -75,7 +82,9 @@ export default function App() {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
       const model = "gemini-2.5-flash";
       
-      const prompt =`
+      const criticalItems = analyzedData.filter(i => i.status === 'Critical').map(i => i.name);
+      const lowItems = analyzedData.filter(i => i.status === 'Low').map(i => i.name);
+      const prompt = `
           You are an expert AI inventory assistant helping a grocery store owner.
           Analyze the following inventory data and provide a detailed, item-wise explanation for EACH item.
           IMPORTANT: Use the correct units (kg, liters, packets, etc.) provided for each item in your response.
@@ -127,6 +136,7 @@ export default function App() {
           break;
         } catch (e: any) {
           if (retries === 0) throw e;
+          // If it's a 503 or 429, wait and retry
           if (e.message?.includes('503') || e.message?.includes('429')) {
             await new Promise(r => setTimeout(r, 2000));
             retries--;
@@ -177,6 +187,7 @@ export default function App() {
           <div className="lg:col-span-5 space-y-8">
             <InventoryForm onAddItem={handleAddItem} isLoading={isLoading} />
             
+            {/* Added Items List */}
             <div className="bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-slate-100 p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-slate-100 rounded-2xl text-slate-600">
@@ -291,6 +302,7 @@ export default function App() {
                 <div key="results" className="space-y-8">
                   <InventoryTable results={results} />
                   
+                  {/* AI Insights Section */}
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}

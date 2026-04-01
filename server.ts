@@ -1,4 +1,3 @@
-
 import express from "express";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
@@ -17,60 +16,20 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", service: "inventory-ai-backend" });
 });
 
-app.post("/api/predict", (req, res) => {
-  const { item, stock, sales } = req.body;
-
-  // Validation
-  if (!item || stock === undefined || !sales || !Array.isArray(sales)) {
-    return res.status(400).json({ error: "All fields are required and must be valid." });
-  }
-
-  if (sales.length < 3) {
-    return res.status(400).json({ error: "At least 3 days of sales data are required for prediction." });
-  }
-
-  // Core Logic Computation
-  const sumSales = sales.reduce((a, b) => a + b, 0);
-  const avgSales = sumSales / sales.length;
-  
-  // Avoid division by zero
-  const effectiveAvgSales = avgSales || 0.1; 
-  const daysLeft = Math.floor(stock / effectiveAvgSales);
-  
-  // Recommended reorder quantity (for 14 days supply)
-  const reorder = Math.ceil(effectiveAvgSales * 14);
-
-  // Response
-  res.json({
-    item,
-    days_left: daysLeft,
-    reorder: reorder,
-    avg_daily_sales: parseFloat(avgSales.toFixed(2)),
-    explanation: "" 
-  });
-});
-
 app.post("/api/analyze", (req, res) => {
   const { items } = req.body;
-
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "A list of items is required." });
   }
 
   const results = items.map((item: any) => {
     const { name, stock, sales, unit } = item;
-    
-    // Basic validation for each item
     if (!name || stock === undefined || !sales || !Array.isArray(sales) || sales.length === 0) {
-      return {
-        name: name || "Unknown",
-        error: "Invalid data for this item"
-      };
+      return { name: name || "Unknown", error: "Invalid data" };
     }
-
     const sumSales = sales.reduce((a: number, b: number) => a + b, 0);
     const avgSales = sumSales / sales.length;
-    const effectiveAvgSales = avgSales || 0.1; // Avoid division by zero
+    const effectiveAvgSales = avgSales || 0.1;
     const daysLeft = stock / effectiveAvgSales;
     const reorder = avgSales * 7;
 
@@ -79,9 +38,7 @@ app.post("/api/analyze", (req, res) => {
     else if (daysLeft <= 7) status = "Low";
 
     return {
-      name,
-      stock,
-      unit: unit || "units",
+      name, stock, unit: unit || "units",
       avg_sales: parseFloat(avgSales.toFixed(2)),
       days_left: parseFloat(daysLeft.toFixed(2)),
       reorder: Math.ceil(reorder),
@@ -89,14 +46,10 @@ app.post("/api/analyze", (req, res) => {
     };
   });
 
-  const validResults = results.filter((r: any) => !r.error);
-  validResults.sort((a: any, b: any) => a.days_left - b.days_left);
-
-  res.json(validResults);
+  res.json(results.filter((r: any) => !r.error).sort((a: any, b: any) => a.days_left - b.days_left));
 });
 
 async function startServer() {
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -120,5 +73,4 @@ async function startServer() {
 }
 
 startServer();
-
 export default app;

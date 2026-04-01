@@ -1,0 +1,5 @@
+{
+  "name": "AI Grocery Inventory Assistant",
+  "description": "Predict stock, prevent losses, and optimize inventory with AI-powered grocery stock prediction.",
+  "requestFramePermissions": []
+}

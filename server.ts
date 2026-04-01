@@ -1,0 +1,123 @@
+import express from "express";
+import cors from "cors";
+import { createServer as createViteServer } from "vite";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(cors());
+  app.use(express.json());
+
+  // API Routes
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", service: "inventory-ai-backend" });
+  });
+
+  app.post("/api/predict", (req, res) => {
+    const { item, stock, sales } = req.body;
+
+    // Validation
+    if (!item || stock === undefined || !sales || !Array.isArray(sales)) {
+      return res.status(400).json({ error: "All fields are required and must be valid." });
+    }
+
+    if (sales.length < 3) {
+      return res.status(400).json({ error: "At least 3 days of sales data are required for prediction." });
+    }
+
+    // Core Logic Computation
+    const sumSales = sales.reduce((a, b) => a + b, 0);
+    const avgSales = sumSales / sales.length;
+    
+    // Avoid division by zero
+    const effectiveAvgSales = avgSales || 0.1; 
+    const daysLeft = Math.floor(stock / effectiveAvgSales);
+    
+    // Recommended reorder quantity (for 14 days supply)
+    const reorder = Math.ceil(effectiveAvgSales * 14);
+
+    // Response
+    // Note: AI explanation is generated on the frontend according to platform guidelines.
+    res.json({
+      item,
+      days_left: daysLeft,
+      reorder: reorder,
+      avg_daily_sales: parseFloat(avgSales.toFixed(2)),
+      explanation: "" // Frontend will populate this
+    });
+  });
+
+  app.post("/api/analyze", (req, res) => {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "A list of items is required." });
+    }
+
+    const results = items.map((item: any) => {
+      const { name, stock, sales, unit } = item;
+      
+      // Basic validation for each item
+      if (!name || stock === undefined || !sales || !Array.isArray(sales) || sales.length === 0) {
+        return {
+          name: name || "Unknown",
+          error: "Invalid data for this item"
+        };
+      }
+
+      const sumSales = sales.reduce((a: number, b: number) => a + b, 0);
+      const avgSales = sumSales / sales.length;
+      const effectiveAvgSales = avgSales || 0.1; // Avoid division by zero
+      const daysLeft = stock / effectiveAvgSales;
+      const reorder = avgSales * 7;
+
+      let status = "Healthy";
+      if (daysLeft < 3) status = "Critical";
+      else if (daysLeft <= 7) status = "Low";
+
+      return {
+        name,
+        stock,
+        unit: unit || "units",
+        avg_sales: parseFloat(avgSales.toFixed(2)),
+        days_left: parseFloat(daysLeft.toFixed(2)),
+        reorder: Math.ceil(reorder),
+        status
+      };
+    });
+
+    // Sort by days_left ASC (most critical first)
+    // Filter out items with errors for sorting, or handle them
+    const validResults = results.filter((r: any) => !r.error);
+    validResults.sort((a: any, b: any) => a.days_left - b.days_left);
+
+    res.json(validResults);
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
